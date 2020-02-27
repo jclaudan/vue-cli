@@ -1,5 +1,3 @@
-const webpack = require('webpack')
-
 module.exports = (api, options) => {
   api.chainWebpack(webpackConfig => {
     const isLegacyBundle = process.env.VUE_CLI_MODERN_MODE && !process.env.VUE_CLI_MODERN_BUILD
@@ -19,7 +17,7 @@ module.exports = (api, options) => {
         limit: inlineLimit,
         // use explicit fallback to avoid regression in url-loader>=1.1.0
         fallback: {
-          loader: 'file-loader',
+          loader: require.resolve('file-loader'),
           options: {
             name: genAssetSubPath(dir)
           }
@@ -39,6 +37,10 @@ module.exports = (api, options) => {
         .publicPath(options.publicPath)
 
     webpackConfig.resolve
+      // This plugin can be removed once we switch to Webpack 6
+      .plugin('pnp')
+        .use({ ...require('pnp-webpack-plugin') })
+        .end()
       .extensions
         .merge(['.mjs', '.js', '.jsx', '.vue', '.json', '.wasm'])
         .end()
@@ -57,6 +59,9 @@ module.exports = (api, options) => {
         )
 
     webpackConfig.resolveLoader
+      .plugin('pnp-loaders')
+        .use({ ...require('pnp-webpack-plugin').topLevelLoader })
+        .end()
       .modules
         .add('node_modules')
         .add(api.resolve('node_modules'))
@@ -68,22 +73,31 @@ module.exports = (api, options) => {
     // js is handled by cli-plugin-babel ---------------------------------------
 
     // vue-loader --------------------------------------------------------------
-    const vueLoaderCacheConfig = api.genCacheConfig('vue-loader', {
-      'vue-loader': require('vue-loader/package.json').version,
-      /* eslint-disable-next-line node/no-extraneous-require */
-      '@vue/component-compiler-utils': require('@vue/component-compiler-utils/package.json').version,
-      'vue-template-compiler': require('vue-template-compiler/package.json').version
-    })
+    const vueLoaderCacheIdentifier = {
+      'vue-loader': require('vue-loader/package.json').version
+    }
+
+    // The following 2 deps are sure to exist in Vue 2 projects.
+    // But once we switch to Vue 3, they're no longer mandatory.
+    // (In Vue 3 they are replaced by @vue/compiler-sfc)
+    // So wrap them in a try catch block.
+    try {
+      vueLoaderCacheIdentifier['@vue/component-compiler-utils'] =
+        require('@vue/component-compiler-utils/package.json').version
+      vueLoaderCacheIdentifier['vue-template-compiler'] =
+        require('vue-template-compiler/package.json').version
+    } catch (e) {}
+    const vueLoaderCacheConfig = api.genCacheConfig('vue-loader', vueLoaderCacheIdentifier)
 
     webpackConfig.module
       .rule('vue')
         .test(/\.vue$/)
         .use('cache-loader')
-          .loader('cache-loader')
+          .loader(require.resolve('cache-loader'))
           .options(vueLoaderCacheConfig)
           .end()
         .use('vue-loader')
-          .loader('vue-loader')
+          .loader(require.resolve('vue-loader'))
           .options(Object.assign({
             compilerOptions: {
               whitespace: 'condense'
@@ -100,7 +114,7 @@ module.exports = (api, options) => {
       .rule('images')
         .test(/\.(png|jpe?g|gif|webp)(\?.*)?$/)
         .use('url-loader')
-          .loader('url-loader')
+          .loader(require.resolve('url-loader'))
           .options(genUrlLoaderOptions('img'))
 
     // do not base64-inline SVGs.
@@ -109,7 +123,7 @@ module.exports = (api, options) => {
       .rule('svg')
         .test(/\.(svg)(\?.*)?$/)
         .use('file-loader')
-          .loader('file-loader')
+          .loader(require.resolve('file-loader'))
           .options({
             name: genAssetSubPath('img')
           })
@@ -118,17 +132,25 @@ module.exports = (api, options) => {
       .rule('media')
         .test(/\.(mp4|webm|ogg|mp3|wav|flac|aac)(\?.*)?$/)
         .use('url-loader')
-          .loader('url-loader')
+          .loader(require.resolve('url-loader'))
           .options(genUrlLoaderOptions('media'))
 
     webpackConfig.module
       .rule('fonts')
         .test(/\.(woff2?|eot|ttf|otf)(\?.*)?$/i)
         .use('url-loader')
-          .loader('url-loader')
+          .loader(require.resolve('url-loader'))
           .options(genUrlLoaderOptions('fonts'))
 
     // Other common pre-processors ---------------------------------------------
+
+    const maybeResolve = name => {
+      try {
+        return require.resolve(name)
+      } catch (error) {
+        return name
+      }
+    }
 
     webpackConfig.module
       .rule('pug')
@@ -136,15 +158,15 @@ module.exports = (api, options) => {
           .oneOf('pug-vue')
             .resourceQuery(/vue/)
             .use('pug-plain-loader')
-              .loader('pug-plain-loader')
+              .loader(maybeResolve('pug-plain-loader'))
               .end()
             .end()
           .oneOf('pug-template')
             .use('raw')
-              .loader('raw-loader')
+              .loader(maybeResolve('raw-loader'))
               .end()
             .use('pug-plain-loader')
-              .loader('pug-plain-loader')
+              .loader(maybeResolve('pug-plain-loader'))
               .end()
             .end()
 
@@ -155,7 +177,7 @@ module.exports = (api, options) => {
         // prevent webpack from injecting useless setImmediate polyfill because Vue
         // source contains it (although only uses it if it's native).
         setImmediate: false,
-        // process is injected via EnvironmentPlugin, although some 3rd party
+        // process is injected via DefinePlugin, although some 3rd party
         // libraries may require a mock to work properly (#934)
         process: 'mock',
         // prevent webpack from injecting mocks to Node native modules
@@ -169,8 +191,8 @@ module.exports = (api, options) => {
 
     const resolveClientEnv = require('../util/resolveClientEnv')
     webpackConfig
-      .plugin('process-env')
-        .use(webpack.EnvironmentPlugin, [
+      .plugin('define')
+        .use(require('webpack').DefinePlugin, [
           resolveClientEnv(options)
         ])
 
@@ -187,5 +209,11 @@ module.exports = (api, options) => {
           additionalTransformers: [transformer],
           additionalFormatters: [formatter]
         }])
+
+    const TerserPlugin = require('terser-webpack-plugin')
+    const terserOptions = require('./terserOptions')
+    webpackConfig.optimization
+      .minimizer('terser')
+        .use(TerserPlugin, [terserOptions(options)])
   })
 }

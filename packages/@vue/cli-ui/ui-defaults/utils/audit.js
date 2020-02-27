@@ -30,11 +30,11 @@ exports.auditProject = async function (cwd) {
 
       const data = child.stdout
 
-      let auditAdvisories = []
+      const auditAdvisories = []
 
       const ids = {}
 
-      const lines = data.split(`\n`).filter(l => l.trim()).map(l => JSON.parse(l))
+      const lines = data.split('\n').filter(l => l.trim()).map(l => JSON.parse(l))
       for (const line of lines) {
         if (line.type === 'auditAdvisory') {
           if (!ids[line.data.advisory.id]) {
@@ -54,7 +54,7 @@ exports.auditProject = async function (cwd) {
         }
       }
 
-      auditAdvisories = auditAdvisories.sort((a, b) => severity[a.data.advisory.severity] - severity[b.data.advisory.severity])
+      auditAdvisories.sort((a, b) => severity[a.data.advisory.severity] - severity[b.data.advisory.severity])
 
       let id = 0
       for (const { data: { advisory } } of auditAdvisories) {

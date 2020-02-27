@@ -1,12 +1,16 @@
-const execa = require('execa')
 const inquirer = require('inquirer')
-
-const { warn, hasProjectGit } = require('@vue/cli-shared-utils')
+const {
+  execa,
+  warn,
+  hasProjectGit
+} = require('@vue/cli-shared-utils')
 
 module.exports = async function confirmIfGitDirty (context) {
-  if (process.env.VUE_CLI_SKIP_DIRTY_GIT_PROMPT) {
+  if (process.env.VUE_CLI_SKIP_DIRTY_GIT_PROMPT || process.env.VUE_CLI_API_MODE) {
     return true
   }
+
+  process.env.VUE_CLI_SKIP_DIRTY_GIT_PROMPT = true
 
   if (!hasProjectGit(context)) {
     return true

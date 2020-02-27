@@ -6,8 +6,6 @@ const fs = require('fs')
 const path = require('path')
 const Service = require('../lib/Service')
 
-const { logs } = require('@vue/cli-shared-utils')
-
 const mockPkg = json => {
   fs.writeFileSync('/package.json', JSON.stringify(json, null, 2))
 }
@@ -64,7 +62,7 @@ test('loading plugins from package.json', () => {
   mockPkg({
     devDependencies: {
       'bar': '^1.0.0',
-      '@vue/cli-plugin-babel': '^4.0.0-alpha.5',
+      '@vue/cli-plugin-babel': '^4.2.0',
       'vue-cli-plugin-foo': '^1.0.0'
     }
   })
@@ -82,29 +80,6 @@ test('load project options from package.json', () => {
   })
   const service = createMockService()
   expect(service.projectOptions.lintOnSave).toBe('default')
-})
-
-test('deprecate baseUrl', () => {
-  mockPkg({
-    vue: {
-      baseUrl: './foo/bar'
-    }
-  })
-  createMockService()
-  expect(logs.warn.some(([msg]) => msg.match('is deprecated now, please use "publicPath" instead.')))
-})
-
-test('discard baseUrl if publicPath also exists', () => {
-  mockPkg({
-    vue: {
-      baseUrl: '/foo/barbase/',
-      publicPath: '/foo/barpublic/'
-    }
-  })
-
-  const service = createMockService()
-  expect(logs.warn.some(([msg]) => msg.match('"baseUrl" will be ignored in favor of "publicPath"')))
-  expect(service.projectOptions.publicPath).toBe('/foo/barpublic/')
 })
 
 test('handle option publicPath and outputDir correctly', () => {
@@ -127,6 +102,16 @@ test('normalize publicPath when relative', () => {
   })
   const service = createMockService()
   expect(service.projectOptions.publicPath).toBe('foo/bar/')
+})
+
+test('allow custom protocol in publicPath', () => {
+  mockPkg({
+    vue: {
+      publicPath: 'customprotocol://foo/bar'
+    }
+  })
+  const service = createMockService()
+  expect(service.projectOptions.publicPath).toBe('customprotocol://foo/bar/')
 })
 
 test('keep publicPath when empty', () => {
@@ -198,6 +183,27 @@ test('api: registerCommand', () => {
 
   service.run('foo', { n: 1 })
   expect(args).toEqual({ _: [], n: 1 })
+})
+
+test('api: --skip-plugins', () => {
+  let untouched = true
+  const service = createMockService([{
+    id: 'test-command',
+    apply: api => {
+      api.registerCommand('foo', _args => {
+        return
+      })
+    }
+  },
+  {
+    id: 'vue-cli-plugin-test-plugin',
+    apply: api => {
+      untouched = false
+    }
+  }], false)
+
+  service.run('foo', { 'skip-plugins': 'test-plugin' })
+  expect(untouched).toEqual(true)
 })
 
 test('api: defaultModes', () => {

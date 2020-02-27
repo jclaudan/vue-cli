@@ -19,11 +19,13 @@ module.exports = (api, options) => {
     options: {
       '--open': `open browser on server start`,
       '--copy': `copy url to clipboard on server start`,
+      '--stdin': `close when stdin ends`,
       '--mode': `specify env mode (default: development)`,
       '--host': `specify host (default: ${defaults.host})`,
       '--port': `specify port (default: ${defaults.port})`,
       '--https': `use https (default: ${defaults.https})`,
-      '--public': `specify the public network URL for the HMR client`
+      '--public': `specify the public network URL for the HMR client`,
+      '--skip-plugins': `comma-separated list of plugin names to skip for this run`
     }
   }, async function serve (args) {
     info('Starting development server...')
@@ -34,7 +36,7 @@ module.exports = (api, options) => {
     const isProduction = process.env.NODE_ENV === 'production'
 
     const url = require('url')
-    const chalk = require('chalk')
+    const { chalk } = require('@vue/cli-shared-utils')
     const webpack = require('webpack')
     const WebpackDevServer = require('webpack-dev-server')
     const portfinder = require('portfinder')
@@ -44,6 +46,30 @@ module.exports = (api, options) => {
     const validateWebpackConfig = require('../util/validateWebpackConfig')
     const isAbsoluteUrl = require('../util/isAbsoluteUrl')
 
+    // configs that only matters for dev server
+    api.chainWebpack(webpackConfig => {
+      if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
+        webpackConfig
+          .devtool('cheap-module-eval-source-map')
+
+        webpackConfig
+          .plugin('hmr')
+            .use(require('webpack/lib/HotModuleReplacementPlugin'))
+
+        // https://github.com/webpack/webpack/issues/6642
+        // https://github.com/vuejs/vue-cli/issues/3539
+        webpackConfig
+          .output
+            .globalObject(`(typeof self !== 'undefined' ? self : this)`)
+
+        if (!process.env.VUE_CLI_TEST && options.devServer.progress !== false) {
+          webpackConfig
+            .plugin('progress')
+            .use(require('webpack/lib/ProgressPlugin'))
+        }
+      }
+    })
+
     // resolve webpack config
     const webpackConfig = api.resolveWebpackConfig()
 
@@ -51,7 +77,7 @@ module.exports = (api, options) => {
     validateWebpackConfig(webpackConfig, api, options)
 
     // load user devServer options with higher priority than devServer
-    // in webpck config
+    // in webpack config
     const projectDevServerOptions = Object.assign(
       webpackConfig.devServer || {},
       options.devServer
@@ -105,7 +131,7 @@ module.exports = (api, options) => {
         // explicitly configured via devServer.public
         ? `?${publicUrl}/sockjs-node`
         : isInContainer
-          // can't infer public netowrk url if inside a container...
+          // can't infer public network url if inside a container...
           // use client-side inference (note this would break with non-root publicPath)
           ? ``
           // otherwise infer the url
@@ -137,6 +163,7 @@ module.exports = (api, options) => {
 
     // create server
     const server = new WebpackDevServer(compiler, Object.assign({
+      logLevel: 'silent',
       clientLogLevel: 'silent',
       historyApiFallback: {
         disableDotRule: true,
@@ -145,7 +172,7 @@ module.exports = (api, options) => {
       contentBase: api.resolve('public'),
       watchContentBase: !isProduction,
       hot: !isProduction,
-      quiet: true,
+      injectClient: false,
       compress: isProduction,
       publicPath: options.publicPath,
       overlay: isProduction // TODO disable this
@@ -154,6 +181,7 @@ module.exports = (api, options) => {
     }, projectDevServerOptions, {
       https: useHttps,
       proxy: proxySettings,
+      // eslint-disable-next-line no-shadow
       before (app, server) {
         // launch editor support.
         // this works with vue-devtools & @vue/cli-overlay
@@ -177,6 +205,16 @@ module.exports = (api, options) => {
         })
       })
     })
+
+    if (args.stdin) {
+      process.stdin.on('end', () => {
+        server.close(() => {
+          process.exit(0)
+        })
+      })
+
+      process.stdin.resume()
+    }
 
     // on appveyor, killing the process with SIGTERM causes execa to
     // throw error

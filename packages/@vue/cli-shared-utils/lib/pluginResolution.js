@@ -1,5 +1,5 @@
-const pluginRE = /^(@vue\/|vue-|@[\w-]+\/vue-)cli-plugin-/
-const scopeRE = /^@[\w-]+\//
+const pluginRE = /^(@vue\/|vue-|@[\w-]+(\.)?[\w-]+\/vue-)cli-plugin-/
+const scopeRE = /^@[\w-]+(\.)?[\w-]+\//
 const officialRE = /^@vue\//
 
 const officialPlugins = [
@@ -27,6 +27,11 @@ exports.resolvePluginId = id => {
   if (pluginRE.test(id)) {
     return id
   }
+
+  if (id === '@vue/cli-service') {
+    return id
+  }
+
   if (officialPlugins.includes(id)) {
     return `@vue/cli-plugin-${id}`
   }

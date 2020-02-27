@@ -1,5 +1,4 @@
-const execa = require('execa')
-const chalk = require('chalk')
+const { chalk, execa } = require('@vue/cli-shared-utils')
 // Subs
 const channels = require('../channels')
 // Connectors
@@ -129,7 +128,7 @@ async function list ({ file = null, api = true } = {}, context) {
       if (index !== -1) return index
       return Infinity
     }
-    list = list.sort((a, b) => getSortScore(a) - getSortScore(b))
+    list.sort((a, b) => getSortScore(a) - getSortScore(b))
 
     tasks.set(file, list)
   }
@@ -385,7 +384,7 @@ async function run (id, context) {
           type: 'error'
         }, context)
         notify({
-          title: `Task error`,
+          title: 'Task error',
           message: `Task ${task.id} ended with error code ${code}`,
           icon: 'error'
         })
@@ -399,7 +398,7 @@ async function run (id, context) {
           type: 'done'
         }, context)
         notify({
-          title: `Task completed`,
+          title: 'Task completed',
           message: `Task ${task.id} completed in ${seconds}s.`,
           icon: 'done'
         })
@@ -436,7 +435,7 @@ async function run (id, context) {
         type: 'error'
       }, context)
       notify({
-        title: `Task error`,
+        title: 'Task error',
         message: `Error while running task ${task.id} with message'${error.message}'`,
         icon: 'error'
       })

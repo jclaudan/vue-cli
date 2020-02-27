@@ -103,7 +103,7 @@ module.exports = function createConfigPlugin (context, entry, asLib) {
               .add(/node_modules/)
               .end()
             .use('eslint-loader')
-              .tap(options => Object.assign({}, options, {
+              .tap(loaderOptions => Object.assign({}, loaderOptions, {
                 useEslintrc: hasESLintConfig,
                 baseConfig: {
                   extends: [
@@ -112,6 +112,10 @@ module.exports = function createConfigPlugin (context, entry, asLib) {
                   ],
                   parserOptions: {
                     parser: 'babel-eslint'
+                  },
+                  rules: {
+                    'no-console': process.env.NODE_ENV === 'production' ? 'error' : 'off',
+                    'no-debugger': process.env.NODE_ENV === 'production' ? 'error' : 'off'
                   }
                 }
               }))
